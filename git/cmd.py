@@ -167,7 +167,7 @@ class Git(LazyMixin):
         Set its value to 'full' to see details about the returned values.
     """
     __slots__ = ("_working_dir", "cat_file_all", "cat_file_header", "_version_info",
-                 "_git_options", "_persistent_git_options", "_environment")
+                 "_git_options", "_persistent_git_options", "_environment", "isolated")
 
     _excluded_ = ('cat_file_all', 'cat_file_header', '_version_info')
 
@@ -522,7 +522,7 @@ class Git(LazyMixin):
                 self._stream.read(bytes_left + 1)
             # END handle incomplete read
 
-    def __init__(self, working_dir=None):
+    def __init__(self, working_dir=None, isolated=False):
         """Initialize this instance with:
 
         :param working_dir:
@@ -537,6 +537,7 @@ class Git(LazyMixin):
 
         # Extra environment variables to pass to git commands
         self._environment = {}
+        self.isolated = isolated
 
         # cached command slots
         self.cat_file_header = None
@@ -696,7 +697,7 @@ class Git(LazyMixin):
 
         # Start the process
         inline_env = env
-        env = os.environ.copy()
+        env = {} if self.isolated else os.environ.copy()
         # Attempt to force all output to plain ascii english, which is what some parsing code
         # may expect.
         # According to stackoverflow (http://goo.gl/l74GC8), we are setting LANGUAGE as well

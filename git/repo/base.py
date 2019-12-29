@@ -72,6 +72,7 @@ class Repo(object):
     _working_tree_dir = None
     git_dir = None
     _common_dir = None
+    isolated = False
 
     # precompiled regex
     re_whitespace = re.compile(r'\s+')
@@ -89,7 +90,8 @@ class Repo(object):
     # Subclasses may easily bring in their own custom types by placing a constructor or type here
     GitCommandWrapperType = Git
 
-    def __init__(self, path=None, odbt=GitCmdObjectDB, search_parent_directories=False, expand_vars=True):
+    def __init__(self, path=None, odbt=GitCmdObjectDB, search_parent_directories=False, expand_vars=True,
+                 isolated=False):
         """Create a new Repo instance
 
         :param path:
@@ -113,11 +115,21 @@ class Repo(object):
 
             Please note that this was the default behaviour in older versions of GitPython,
             which is considered a bug though.
+        :param isolated:
+            If True, the current environment variables will be isolated from git as much as possible.
+            Specifically the GIT_* variables are ignored as much as possible.
+
         :raise InvalidGitRepositoryError:
         :raise NoSuchPathError:
         :return: git.Repo """
 
-        epath = path or os.getenv('GIT_DIR')
+        self.isolated = isolated
+
+        if isolated:
+            if path is None:
+                raise ValueError('When isolated, the repo path must be specified.')
+
+        epath = path or os.environ.get('GIT_DIR')
         if not epath:
             epath = os.getcwd()
         if Git.is_cygwin():
@@ -152,12 +164,12 @@ class Repo(object):
                 # If GIT_DIR is specified but none of GIT_WORK_TREE and core.worktree is specified,
                 # the current working directory is regarded as the top level of your working tree.
                 self._working_tree_dir = os.path.dirname(self.git_dir)
-                if os.environ.get('GIT_COMMON_DIR') is None:
+                if isolated or os.environ.get('GIT_COMMON_DIR') is None:
                     gitconf = self.config_reader("repository")
                     if gitconf.has_option('core', 'worktree'):
                         self._working_tree_dir = gitconf.get('core', 'worktree')
-                if 'GIT_WORK_TREE' in os.environ:
-                    self._working_tree_dir = os.getenv('GIT_WORK_TREE')
+                if not isolated and 'GIT_WORK_TREE' in os.environ:
+                    self._working_tree_dir = os.environ.get('GIT_WORK_TREE')
                 break
 
             dotgit = osp.join(curpath, '.git')
@@ -204,7 +216,7 @@ class Repo(object):
         # END working dir handling
 
         self.working_dir = self._working_tree_dir or self.common_dir
-        self.git = self.GitCommandWrapperType(self.working_dir)
+        self.git = self.GitCommandWrapperType(self.working_dir, isolated=self.isolated)
 
         # special handling, in special times
         args = [osp.join(self.common_dir, 'objects')]
@@ -892,7 +904,7 @@ class Repo(object):
         return blames
 
     @classmethod
-    def init(cls, path=None, mkdir=True, odbt=GitCmdObjectDB, expand_vars=True, **kwargs):
+    def init(cls, path=None, mkdir=True, odbt=GitCmdObjectDB, expand_vars=True, isolated=False, **kwargs):
         """Initialize a git repository at the given path if specified
 
         :param path:
@@ -915,6 +927,10 @@ class Repo(object):
             can lead to information disclosure, allowing attackers to
             access the contents of environment variables
 
+        :param isolated:
+            If True, the current environment variables will be isolated from git as much as possible.
+            Specifically the GIT_* variables are ignored as much as possible.
+
         :param kwargs:
             keyword arguments serving as additional options to the git-init command
 
@@ -925,12 +941,12 @@ class Repo(object):
             os.makedirs(path, 0o755)
 
         # git command automatically chdir into the directory
-        git = Git(path)
+        git = Git(path, isolated=isolated)
         git.init(**kwargs)
         return cls(path, odbt=odbt)
 
     @classmethod
-    def _clone(cls, git, url, path, odb_default_type, progress, multi_options=None, **kwargs):
+    def _clone(cls, git, url, path, odb_default_type, progress, multi_options=None, isolated=False, **kwargs):
         if progress is not None:
             progress = to_progress_instance(progress)
 
@@ -969,7 +985,7 @@ class Repo(object):
         if not osp.isabs(path) and git.working_dir:
             path = osp.join(git._working_dir, path)
 
-        repo = cls(path, odbt=odbt)
+        repo = cls(path, odbt=odbt, isolated=isolated)
 
         # retain env values that were passed to _clone()
         repo.git.update_environment(**git.environment())
@@ -985,7 +1001,7 @@ class Repo(object):
         # END handle remote repo
         return repo
 
-    def clone(self, path, progress=None, multi_options=None, **kwargs):
+    def clone(self, path, progress=None, multi_options=None, isolated=False, **kwargs):
         """Create a clone from this repository.
 
         :param path: is the full path of the new repo (traditionally ends with ./<name>.git).
@@ -1000,10 +1016,10 @@ class Repo(object):
             * All remaining keyword arguments are given to the git-clone command
 
         :return: ``git.Repo`` (the newly cloned repo)"""
-        return self._clone(self.git, self.common_dir, path, type(self.odb), progress, multi_options, **kwargs)
+        return self._clone(self.git, self.common_dir, path, type(self.odb), progress, multi_options, isolated, **kwargs)
 
     @classmethod
-    def clone_from(cls, url, to_path, progress=None, env=None, multi_options=None, **kwargs):
+    def clone_from(cls, url, to_path, progress=None, env=None, multi_options=None, isolated=False, **kwargs):
         """Create a clone from the given URL
 
         :param url: valid git url, see http://www.kernel.org/pub/software/scm/git/docs/git-clone.html#URLS
@@ -1017,11 +1033,12 @@ class Repo(object):
             as its value.
         :param multi_options: See ``clone`` method
         :param kwargs: see the ``clone`` method
+        :param isolated: see the ``clone`` method
         :return: Repo instance pointing to the cloned directory"""
-        git = Git(os.getcwd())
+        git = Git(os.getcwd(), isolated=isolated)
         if env is not None:
             git.update_environment(**env)
-        return cls._clone(git, url, to_path, GitCmdObjectDB, progress, multi_options, **kwargs)
+        return cls._clone(git, url, to_path, GitCmdObjectDB, progress, multi_options, isolated, **kwargs)
 
     def archive(self, ostream, treeish=None, prefix=None, **kwargs):
         """Archive the tree at the given revision.

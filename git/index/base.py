@@ -945,10 +945,10 @@ class IndexFile(LazyMixin, diff.Diffable, Serializable):
                or `--no-verify` on the command line.
         :return: Commit object representing the new commit"""
         if not skip_hooks:
-            run_commit_hook('pre-commit', self)
+            run_commit_hook('pre-commit', self, isolated=self.repo.isolated)
 
             self._write_commit_editmsg(message)
-            run_commit_hook('commit-msg', self, self._commit_editmsg_filepath())
+            run_commit_hook('commit-msg', self, self._commit_editmsg_filepath(), isolated=self.repo.isolated)
             message = self._read_commit_editmsg()
             self._remove_commit_editmsg()
         tree = self.write_tree()
@@ -956,7 +956,7 @@ class IndexFile(LazyMixin, diff.Diffable, Serializable):
                                        head, author=author, committer=committer,
                                        author_date=author_date, commit_date=commit_date)
         if not skip_hooks:
-            run_commit_hook('post-commit', self)
+            run_commit_hook('post-commit', self, isolated=self.repo.isolated)
         return rval
     
     def _write_commit_editmsg(self, message):

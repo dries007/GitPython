@@ -583,7 +583,7 @@ class Actor(object):
         # END handle name/email matching
 
     @classmethod
-    def _main_actor(cls, env_name, env_email, config_reader=None):
+    def _main_actor(cls, env_name, env_email, config_reader=None, isolated=False):
         actor = Actor('', '')
         default_email = get_user_id()
         default_name = default_email.split('@')[0]
@@ -591,11 +591,14 @@ class Actor(object):
         for attr, evar, cvar, default in (('name', env_name, cls.conf_name, default_name),
                                           ('email', env_email, cls.conf_email, default_email)):
             try:
+                if isolated:
+                    raise KeyError("Isolated. No env access.")
                 val = os.environ[evar]
                 if not PY3:
                     val = val.decode(defenc)
                 # end assure we don't get 'invalid strings'
                 setattr(actor, attr, val)
+                continue
             except KeyError:
                 if config_reader is not None:
                     setattr(actor, attr, config_reader.get_value('user', cvar, default))
@@ -607,7 +610,7 @@ class Actor(object):
         return actor
 
     @classmethod
-    def committer(cls, config_reader=None):
+    def committer(cls, config_reader=None, isolated=False):
         """
         :return: Actor instance corresponding to the configured committer. It behaves
             similar to the git implementation, such that the environment will override
@@ -615,13 +618,13 @@ class Actor(object):
             generated
         :param config_reader: ConfigReader to use to retrieve the values from in case
             they are not set in the environment"""
-        return cls._main_actor(cls.env_committer_name, cls.env_committer_email, config_reader)
+        return cls._main_actor(cls.env_committer_name, cls.env_committer_email, config_reader, isolated)
 
     @classmethod
-    def author(cls, config_reader=None):
+    def author(cls, config_reader=None, isolated=False):
         """Same as committer(), but defines the main author. It may be specified in the environment,
         but defaults to the committer"""
-        return cls._main_actor(cls.env_author_name, cls.env_author_email, config_reader)
+        return cls._main_actor(cls.env_author_name, cls.env_author_email, config_reader, isolated)
 
 
 class Stats(object):

@@ -279,7 +279,7 @@ class Commit(base.Object, Iterable, Diffable, Traversable, Serializable):
 
     @classmethod
     def create_from_tree(cls, repo, tree, message, parent_commits=None, head=False, author=None, committer=None,
-                         author_date=None, commit_date=None):
+                         author_date=None, commit_date=None, isolated=False):
         """Commit the given tree, creating a commit object.
 
         :param repo: Repo object the commit should be part of
@@ -303,6 +303,7 @@ class Commit(base.Object, Iterable, Diffable, Traversable, Serializable):
             repository configuration is used to obtain this value.
         :param author_date: The timestamp for the author field
         :param commit_date: The timestamp for the committer field
+        :param isolated: if true, the parent environment is not passed to the git command.
 
         :return: Commit object representing the new commit
 
@@ -332,10 +333,10 @@ class Commit(base.Object, Iterable, Diffable, Traversable, Serializable):
 
         # COMMITER AND AUTHOR INFO
         cr = repo.config_reader()
-        env = os.environ
+        env = {} if isolated else os.environ
 
-        committer = committer or Actor.committer(cr)
-        author = author or Actor.author(cr)
+        committer = committer or Actor.committer(cr, isolated=isolated)
+        author = author or Actor.author(cr, isolated=isolated)
 
         # PARSE THE DATES
         unix_time = int(time())

@@ -62,17 +62,18 @@ def hook_path(name, git_dir):
     return osp.join(git_dir, 'hooks', name)
 
 
-def run_commit_hook(name, index, *args):
+def run_commit_hook(name, index, *args, isolated=False):
     """Run the commit hook of the given name. Silently ignores hooks that do not exist.
     :param name: name of hook, like 'pre-commit'
     :param index: IndexFile instance
     :param args: arguments passed to hook file
+    :param isolated: if true, the parent environment is not passed to the git command.
     :raises HookExecutionError: """
     hp = hook_path(name, index.repo.git_dir)
     if not os.access(hp, os.X_OK):
         return
 
-    env = os.environ.copy()
+    env = {} if isolated else os.environ.copy()
     env['GIT_INDEX_FILE'] = safe_decode(index.path) if PY3 else safe_encode(index.path)
     env['GIT_EDITOR'] = ':'
     try:
